@@ -35,7 +35,7 @@ io.on('connection', function(socket) {
   });
    
   socket.on('signal', function(data) {
-    var connection = io.sockets.sockets.get(data.id);
+    const connection = io.sockets.sockets.get(data.id);
     if (!connection) return;
 
     connection.emit('signal', {
