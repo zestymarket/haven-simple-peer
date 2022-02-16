@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <title>haven?</title>
+   </head>
+
+   <body>
+     <div id="info"></div>
+     <div id="users"></div>
+     <div id="tracks"></div>
+   </body>
+   <!-- idk how express knows how to resolve this -->
+   <script src="/socket.io/socket.io.js"></script>
+   <!-- had to go custom for simple peer -->
+   <script src="/simple-peer.js"></script>
+   
+   <script async type="module">
+
+    const peers = {};
+
+    (async () => {
+      const username = prompt('select username');
+      const socket = io();
+      const mediaPromise =  navigator.mediaDevices.getUserMedia({ audio: true});
+
+      socket.on('connect', function() {
+        console.log('socket connected', socket.id)
+        const container = document.querySelector('#info');
+        container.append(document.createTextNode(`connected with id ${socket.id}, username: ${username}`));
+        socket.emit('join', { username, id: socket.id });
+      });
+
+      socket.on('join', () => {
+        console.log('hollup');
+      })
+
+      socket.on("disconnect", () => {
+        console.log(socket.id); // undefined
+      });
+
+      socket.on('peer', async (data) => {
+        const media = await mediaPromise;
+        const id = data.id;
+        const peer = new SimplePeer({ initiator: data.initiator, stream: media});
+
+        console.log('Peer available for connection , id:', id);
+
+        socket.on('signal', function(data) {
+          if (data.id === id) {
+            console.log('Received signalling data', data, 'from id:', id, 'from user', data.username);
+            peers[id] = {...peers[id], username: data.username}
+            peer.signal(data.signal);
+          }
+        });
+
+        socket.on('leave', ({id}) => {
+          console.log('peer left', id);
+          peer.destroy();
+          delete peers[id];
+
+          const tracks = document.getElementById('tracks');
+          tracks.removeChild(document.querySelector(`#track-${id}`));
+        });
+
+        peer.on('signal', function(data) {
+          console.log('Sending signal data', data, 'to id:', id);
+          socket.emit('signal', {
+            signal: data,
+            id: id
+          });
+        });
+
+        peer.on('error', function(e) {
+          console.log('Error sending connection to peer:', id, e);
+        });
+
+        peer.on('connect', function() {
+          console.log('Peer connection established');
+          // send a test message /w a buffer
+          peer.send("hey peer");
+        });
+
+        // We're only going to be using this for audio atm
+        peer.on('data', function(data) {
+          // data is a buffer
+          console.log('Recieved data from peer:', data.toString( ));
+        });
+
+        peer.on('track', (track, stream) => {
+          console.log('TRACK CONNECTED', track, stream)
+          const tracks = document.querySelector('#tracks')
+          const container = document.createElement('div')
+          container.id = `track-${id}`;
+
+          const label = document.createElement('span');
+          label.innerText = peers[id].username;
+          const audio = document.createElement('audio');
+          // audio.id = 'audio-' + id;.
+          audio.controls = true
+          container.appendChild(label);
+          container.appendChild(audio);
+          tracks.appendChild(container)
+
+          if ('srcObject' in audio) {
+            audio.srcObject = stream
+          } else {
+            audio.src = window.URL.createObjectURL(stream) // for older browsers
+          }
+
+          audio.play()
+
+        })
+
+        peers[id] = {peer, username, id};
+      });
+    })();
+        
+   </script>
+</html>
